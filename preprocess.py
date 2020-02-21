@@ -6,7 +6,7 @@ from tqdm import tqdm
 import pickle
 import pywt
 import numpy as np
-import matplotlib.plotly as plt
+import matplotlib.pyplot as plt
 
 # Get the participant data from Dataset directory
 global t0, fs, dt, num_eeg_ch, eeg_channels, num_conds, N_samples, time
@@ -69,37 +69,32 @@ def get_spectogram(trial):
     in the time-domain.
     '''
     scales = np.arange(1, 128)
-    cwtmatr, freqs = pywt.cwt(trial, scales, 'morl', dt)
+    cwtmatr, freqs = pywt.cwt(trial, scales, 'morl', sampling_period=dt)
+    # ignore freqs > 100 Hz
+    start = len(freqs[freqs > 100])
+    freqs = freqs[start:]
+    cwtmatr = cwtmatr[start:, :]
     power = (abs(cwtmatr)) ** 2
-    period = 1/freqs
-    levels = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8]
+    levels = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 384, 512,
+              640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920,
+              2048]
     contour_levels = np.log2(levels)
 
     fig, ax = plt.subplots(figsize=(15, 10))
-    cmap = plt.cm.seismic
-    im = ax.contourf(time, np.log2(period), np.log2(power), contour_levels,
-                     extend='both', cmap=cmap)
-
+    im = ax.contourf(time, freqs, np.log2(power), contour_levels,
+                     extend='both', cmap=plt.cm.seismic)
+    ax.set_ylabel('Approximate Frequency [Hz]', fontsize=16)
+    ax.set_xlabel('Time (s)', fontsize=16)
+    ax.set_xlim(time.min(), time.max())
     ax.set_title('Wavelet Transform (Power Spectrum)', fontsize=20)
-    ax.set_ylabel('Period', fontsize=18)
-    ax.set_xlabel('Time (s)', fontsize=18)
-
-    yticks = 2 ** np.arange(np.ceil(np.log2(period.min())),
-                            np.ceil(np.log2(period.max())))
-    ax.set_yticks(np.log2(yticks))
-    ax.set_yticklabels(yticks)
-    ax.invert_yaxis()
-    ylim = ax.get_ylim()
-    ax.set_ylim(ylim[0], -1)
-
-    cbar_ax = fig.add_axes([0.95, 0.5, 0.03, 0.25])
-    fig.colorbar(im, cax=cbar_ax, orientation="vertical")
+    yticks = np.arange(0, np.round(freqs.max()/100)*100, step=100)
+    ax.set_yticks(yticks)
     plt.show()
 
 
 def main():
     '''
-    # both train and test data is a list (each participant)
+    both train and test data is a list (each participant)
     of list (each trial) of data frames
     '''
     train_data = []
