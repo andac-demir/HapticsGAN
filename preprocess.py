@@ -1,19 +1,23 @@
-import numpy as np
 import pandas as pd
 import glob
 from scipy.io import loadmat
 import concurrent.futures # for parallel processing
 from tqdm import tqdm
-
+import pickle
+import pywt
+import numpy as np
+import matplotlib.plotly as plt
 
 # Get the participant data from Dataset directory
-global t0, fs, dt, num_eeg_ch, eeg_channels, num_conds
+global t0, fs, dt, num_eeg_ch, eeg_channels, num_conds, N_samples, time
 t0 = 0
 fs = 1200
 dt = 1.0/fs
 num_eeg_ch = 3
 eeg_channels = [4, 5, 6]
 num_conds = 18
+N_samples = 400
+time = np.arange(0, N_samples) * dt
 
 # Get a list of files to process
 data_files = list(map(loadmat, glob.glob("Dataset/*.mat")))
@@ -31,7 +35,7 @@ def extract_data(file):
             for trial in range(num_trials):
                 data = pd.DataFrame(columns=columns)
                 for i, ch in enumerate(eeg_channels):
-                    data.iloc[:, i] = file['EEGSeg_Ch'][0, ch][0, cond][trial, :]
+                    data.iloc[:, i] = file['EEGSeg_Ch'][0, ch][0, cond][trial, :N_samples]
 
                 # mean subtraction in each trial from the eeg for removing dc drift
                 data.iloc[:, :num_conds] -= data.iloc[:, :num_conds].mean()
@@ -51,6 +55,46 @@ def train_test_split(data, train_ratio=0.50):
     num_train = int(train_ratio * len(data))
     train_data, test_data = data[:num_train], data[num_train:]
     return train_data, test_data
+
+
+def get_spectogram(trial):
+    '''
+    create time-frequency representation of each trial
+    https://www.mathworks.com/help/wavelet/examples/classify-time-series-using-wavelet-analysis-and-deep-learning.html
+    We see that a higher scale-factor (longer wavelet) corresponds with a
+    smaller frequency, so by scaling the wavelet in the time-domain
+    we will analyze smaller frequencies (achieve a higher resolution)
+    in the frequency domain.
+    And vice versa, by using a smaller scale we have more detail
+    in the time-domain.
+    '''
+    scales = np.arange(1, 128)
+    cwtmatr, freqs = pywt.cwt(trial, scales, 'morl', dt)
+    power = (abs(cwtmatr)) ** 2
+    period = 1/freqs
+    levels = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8]
+    contour_levels = np.log2(levels)
+
+    fig, ax = plt.subplots(figsize=(15, 10))
+    cmap = plt.cm.seismic
+    im = ax.contourf(time, np.log2(period), np.log2(power), contour_levels,
+                     extend='both', cmap=cmap)
+
+    ax.set_title('Wavelet Transform (Power Spectrum)', fontsize=20)
+    ax.set_ylabel('Period', fontsize=18)
+    ax.set_xlabel('Time (s)', fontsize=18)
+
+    yticks = 2 ** np.arange(np.ceil(np.log2(period.min())),
+                            np.ceil(np.log2(period.max())))
+    ax.set_yticks(np.log2(yticks))
+    ax.set_yticklabels(yticks)
+    ax.invert_yaxis()
+    ylim = ax.get_ylim()
+    ax.set_ylim(ylim[0], -1)
+
+    cbar_ax = fig.add_axes([0.95, 0.5, 0.03, 0.25])
+    fig.colorbar(im, cax=cbar_ax, orientation="vertical")
+    plt.show()
 
 
 def main():
@@ -83,6 +127,14 @@ def main():
           'in the test file: %i' % total_test)
     # first 10 samples of the first trial from the first subject
     print(train_data[0][0].head(10))
+
+    # save train and test data:
+    PIK1 = 'Dataset/train_data.dat'
+    PIK2 = 'Dataset/test_data.dat'
+    with open(PIK1, "wb") as f:
+        pickle.dump(train_data, f)
+    with open(PIK2, "wb") as f:
+        pickle.dump(test_data, f)
 
 
 if __name__ == '__main__':
