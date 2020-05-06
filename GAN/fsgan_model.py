@@ -12,7 +12,6 @@ class Encoder(nn.Module):
             nn.Conv2d(1, 8, 3, stride=2, padding=1),  # x = 10 x 8 x 2 x 200
             nn.ReLU(True),
             nn.MaxPool2d(2, stride=1),  # x = 10 x 8 x 1 x 199
-
             nn.Conv2d(8, 1, 3, stride=1, padding=1),  # x = 10 x 1 x 1 x 199
             nn.ReLU(True),
         )
