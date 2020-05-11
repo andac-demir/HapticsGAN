@@ -7,6 +7,7 @@ import argparse
 import pickle
 from math import floor
 from keras.utils import to_categorical
+from tqdm import tqdm
 
 
 PIK1 = 'data.dat'
@@ -60,6 +61,7 @@ def get_batches(data, movement_labels, surface_labels, batch_size, n_chan, n_sam
 
     # shuffle data
     indices = np.arange(data.shape[0])
+    np.random.shuffle(indices)
     data = torch.from_numpy(data[indices])
     movement_labels = movement_labels[indices]
     surface_labels = surface_labels[indices]
@@ -107,7 +109,23 @@ def main():
     print("\n\nData parsed.")
     train(model, device, optimizer, args.adversarial, train_iterator,
           test_iterator, args.batch_size, args.n_epoch)
-
+    print('Finished Training')
+    # Save our trained model
+    PATH = 'saved_model/inference_net.pth'
+    torch.save(model.state_dict(), PATH)
+    if args.adversarial:
+        correct, total = 0, 0
+        with torch.no_grad():
+            for batch in tqdm(test_iterator):
+                test_data, test_nuisance = batch
+                outputs = model(test_data, test_nuisance)
+                s_hat = outputs[3]
+                _, predicted = torch.max(s_hat.data, 1)
+                _, actual = torch.max(test_nuisance.data, 1)
+                total += test_nuisance.size(0)
+                correct += (predicted == actual).sum().item()
+        print('Accuracy of the network on the test dataset: %d %%' % (
+                100 * correct / total))
 
 if __name__ == "__main__":
     main()
